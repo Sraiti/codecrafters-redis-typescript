@@ -12,11 +12,9 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
 
     console.log({ request });
 
-    if (request === "*1\r\n$4\r\nping") {
+    if (request.includes("*1\r\n$4\r\nping")) {
       connection.write("+PONG\r\n");
     }
-
-    connection.end();
   });
 });
 
