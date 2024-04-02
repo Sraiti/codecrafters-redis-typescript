@@ -1,8 +1,9 @@
+import { log } from "node:console";
 import * as net from "node:net";
 
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.log("Logs from your program will appear here!");
-
+const mapStore = new Map<string, string>();
 // Uncomment this block to pass the first stage
 const server: net.Server = net.createServer((connection: net.Socket) => {
   // Handle connection
@@ -10,11 +11,19 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
   connection.on("data", (data: Buffer) => {
     const request = data.toString().trim();
 
-    const parsedRequest = redisProtocolParser(request);
+    console.log({ request });
 
-    const command = parsedRequest[0];
+    const parsedRequest: string[] = redisProtocolParser(request);
 
-    if (command === "ping") {
+    if (!parsedRequest.length) {
+      console.log("Invalid request", { parsedRequest });
+      connection.write("-ERR invalid request\r\n");
+      return;
+    }
+    const command = parsedRequest[0].toLowerCase();
+    console.log({ parsedRequest, command });
+
+    if (command.toLowerCase() === "ping") {
       connection.write("+PONG\r\n");
     }
 
@@ -23,71 +32,92 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
         `$${parsedRequest[1].length}\r\n${parsedRequest[1]}\r\n`
       );
     }
+
+    if (command === "set") {
+      mapStore.set(parsedRequest[1], parsedRequest[2]);
+
+      connection.write("+OK\r\n");
+    }
+
+    if (command === "get") {
+      const value = mapStore.get(parsedRequest[1]);
+
+      if (value) {
+        connection.write(`$${value.length}\r\n${value}\r\n`);
+      } else {
+        connection.write("$-1\r\n");
+      }
+    }
   });
 });
 
 server.listen(6379, "127.0.0.1");
 
 function redisProtocolParser(str: string) {
-  let index = 0;
+  try {
+    let index = 0;
 
-  function content() {
-    return str.slice(index + 1, str.indexOf("\r\n", index));
-  }
+    function content() {
+      return str.slice(index + 1, str.indexOf("\r\n", index));
+    }
 
-  function skip() {
-    index = str.indexOf("\r\n", index) + 2;
-  }
+    function skip() {
+      index = str.indexOf("\r\n", index) + 2;
+    }
 
-  function next() {
-    let _;
+    function next() {
+      let _;
 
-    switch (str[index]) {
-      case "+":
-        return { message: content() };
+      switch (str[index]) {
+        case "+":
+          return { message: content() };
 
-      case "-":
-        _ = content().split(" ");
+        case "-":
+          _ = content().split(" ");
 
-        return { name: _[0], message: _.slice(1).join(" ") };
+          return { name: _[0], message: _.slice(1).join(" ") };
 
-      case ":":
-        return Number(content());
+        case ":":
+          return Number(content());
 
-      case "$":
-        _ = Number(content());
+        case "$":
+          _ = Number(content());
 
-        if (_ === -1) {
-          return null;
-        }
-
-        skip();
-
-        return str.slice(index, index + _);
-
-      case "*":
-        _ = Number(content());
-
-        if (_ === -1) {
-          return null;
-        }
-
-        _ = new Array(_);
-
-        skip();
-
-        for (let i = 0; i < _.length; i++) {
-          _[i] = next();
+          if (_ === -1) {
+            return null;
+          }
 
           skip();
-        }
 
-        return _;
+          return str.slice(index, index + _);
 
-      default:
-        throw new SyntaxError("Invalid input: " + JSON.stringify(str));
+        case "*":
+          _ = Number(content());
+
+          if (_ === -1) {
+            return null;
+          }
+
+          _ = new Array(_);
+
+          skip();
+
+          for (let i = 0; i < _.length; i++) {
+            _[i] = next();
+
+            skip();
+          }
+
+          return _;
+
+        default:
+          throw new SyntaxError("Invalid input: " + JSON.stringify(str));
+      }
     }
-  }
 
-  return next();
+    return next();
+  } catch (error) {
+    console.log(error);
+    return [];
+  }
 }
