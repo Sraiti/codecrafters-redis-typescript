@@ -3,10 +3,18 @@ import * as net from "node:net";
 
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.log("Logs from your program will appear here!");
-const mapStore = new Map<string, string>();
+
 // Uncomment this block to pass the first stage
 const server: net.Server = net.createServer((connection: net.Socket) => {
   // Handle connection
+
+  const mapStore = new Map<
+    string,
+    {
+      value: string;
+      ttl: number;
+    }
+  >();
 
   connection.on("data", (data: Buffer) => {
     const request = data.toString().trim();
@@ -34,16 +42,49 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
     }
 
     if (command === "set") {
-      mapStore.set(parsedRequest[1], parsedRequest[2]);
+      console.info("start set command :");
 
-      connection.write("+OK\r\n");
+      const [command, key, value, option, optionValue] = parsedRequest;
+
+      console.log({ key, value, option, optionValue });
+
+      if (option && option === "px") {
+        mapStore.set(key, {
+          value: value,
+          ttl: Date.now() + Number(optionValue),
+        });
+
+        connection.write("+OK\r\n");
+      } else {
+        mapStore.set(key, {
+          value: value,
+          ttl: Infinity,
+        });
+
+        connection.write("+OK\r\n");
+      }
     }
 
     if (command === "get") {
-      const value = mapStore.get(parsedRequest[1]);
+      console.log("start get command :");
 
-      if (value) {
-        connection.write(`$${value.length}\r\n${value}\r\n`);
+      console.log({
+        mapStore: Object.fromEntries(mapStore),
+      });
+
+      const [command, key] = parsedRequest;
+
+      const item = mapStore.get(key);
+
+      log({ key, item });
+      if (item) {
+        if (item.ttl === Infinity) {
+          connection.write(`$${item.value.length}\r\n${item.value}\r\n`);
+        } else if (item.ttl > Date.now()) {
+          connection.write(`$${item.value.length}\r\n${item.value}\r\n`);
+        } else {
+          connection.write("$-1\r\n");
+        }
       } else {
         connection.write("$-1\r\n");
       }
