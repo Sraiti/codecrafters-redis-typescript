@@ -4,6 +4,14 @@ import * as net from "node:net";
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.log("Logs from your program will appear here!");
 
+const args = Deno.args;
+
+console.log({ args });
+
+function getArgValue(argName: string): number {
+  return +args[args.findIndex((arg) => arg === argName) + 1];
+}
+
 // Uncomment this block to pass the first stage
 const server: net.Server = net.createServer((connection: net.Socket) => {
   // Handle connection
@@ -92,7 +100,7 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
   });
 });
 
-server.listen(6379, "127.0.0.1");
+server.listen(getArgValue("--port") || 6379, "127.0.0.1");
 
 function redisProtocolParser(str: string) {
   try {
