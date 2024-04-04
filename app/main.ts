@@ -9,9 +9,11 @@ const args = Deno.args;
 
 console.log({ args });
 
-function getArgValue(argName: string): number {
-  return +args[args.findIndex((arg) => arg === argName) + 1];
+function getArgValue(argName: string): string {
+  return args[args.findIndex((arg) => arg === argName) + 1];
 }
+
+const replicaOf = getArgValue("--replicaof") || false;
 
 // Uncomment this block to pass the first stage
 const server: net.Server = net.createServer((connection: net.Socket) => {
@@ -102,14 +104,18 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
     if (command === "info") {
       console.log("started Info Stage");
 
-      console.log({ parsedRequest });
+      console.log({ parsedRequest, replicaOf });
 
-      connection.write(`$11\r\nrole:master\r\n`);
+      if (replicaOf) {
+        connection.write(`$10\r\nrole:slave\r\n`);
+      } else {
+        connection.write(`$11\r\nrole:master\r\n`);
+      }
     }
   });
 });
 
-server.listen(getArgValue("--port") || 6379, "127.0.0.1");
+server.listen(parseInt(getArgValue("--port")) || 6379, "127.0.0.1");
 
 function redisProtocolParser(str: string) {
   try {
