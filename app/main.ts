@@ -1,5 +1,6 @@
 import { log } from "node:console";
 import * as net from "node:net";
+import { parse } from "node:path";
 
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.log("Logs from your program will appear here!");
@@ -96,6 +97,14 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
       } else {
         connection.write("$-1\r\n");
       }
+    }
+
+    if (command === "info") {
+      console.log("started Info Stage");
+
+      console.log({ parsedRequest });
+
+      connection.write(`$11\r\nrole:master\r\n`);
     }
   });
 });
