@@ -5,15 +5,21 @@ import { parse } from "node:path";
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.log("Logs from your program will appear here!");
 
-const args = Deno.args;
+const args: string[] = Deno.args || [];
 
 console.log({ args });
 
-function getArgValue(argName: string): string {
-  return args[args.findIndex((arg) => arg === argName) + 1];
+function getArgValue(argName: string): string | false {
+  const argIndex = args.findIndex((arg) => arg === argName);
+  if (argIndex === -1) {
+    return false;
+  }
+  return args[argIndex + 1];
 }
 
 const replicaOf = getArgValue("--replicaof") || false;
+
+instanceNatureCheck();
 
 // Uncomment this block to pass the first stage
 const server: net.Server = net.createServer((connection: net.Socket) => {
@@ -135,6 +141,40 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
     }
   });
 });
+
+function instanceNatureCheck() {
+  console.log({ replicaOf });
+
+  if (replicaOf) {
+    console.log("replicaOf start handshake process with MASTER");
+
+    const port = Number(args.pop());
+    const host = getArgValue("--replicaof");
+
+    console.log({ port, host });
+
+    if (!port || !host) {
+      console.log("Invalid replicaOf arguments");
+      return;
+    }
+
+    startHandshakeProcess(Number(port), host);
+  } else {
+    console.log("MASTER");
+  }
+}
+
+function startHandshakeProcess(masterPort: number, masterAddress: string) {
+  const client = net.createConnection(
+    { port: masterPort, host: masterAddress },
+    () => {
+      console.log("started Handshake Process with MASTER");
+
+      console.log("PING");
+      client.write("*1\r\n$4\r\nping\r\n");
+    }
+  );
+}
 
 function mapToString(map: Map<any, any>): string {
   let result = "";
