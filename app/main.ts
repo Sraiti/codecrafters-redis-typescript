@@ -106,14 +106,47 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
 
       console.log({ parsedRequest, replicaOf });
 
+      const infoMap = new Map<string, string>();
+
       if (replicaOf) {
-        connection.write(`$10\r\nrole:slave\r\n`);
+        infoMap.set("role", "slave");
+        // map.set("master_replid", "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb");
+        // map.set("master_repl_offset", 0);
+
+        //  connection.write(`$10\r\nrole:slave\r\n`);
       } else {
-        connection.write(`$11\r\nrole:master\r\n`);
+        infoMap.set("role", "master");
+        infoMap.set(
+          "master_replid",
+          "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+        );
+        infoMap.set("master_repl_offset", "0");
+
+        //  connection.write(`$11\r\nrole:master\r\n`);
       }
+
+      const infoResponse = `$${mapToString(infoMap).length}\r\n${mapToString(
+        infoMap
+      )}\r\n`;
+
+      console.log("infoResponse", infoResponse);
+
+      connection.write(infoResponse);
     }
   });
 });
+
+function mapToString(map: Map<any, any>): string {
+  let result = "";
+  for (let [key, value] of map.entries()) {
+    if (result !== "") {
+      result += "\r\n"; // Add a newline between entries, but not before the first entry
+    }
+    result += `${key}:${value}`;
+  }
+
+  return result;
+}
 
 server.listen(parseInt(getArgValue("--port")) || 6379, "127.0.0.1");
 
