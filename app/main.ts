@@ -17,6 +17,7 @@ function getArgValue(argName: string): string | false {
   return args[argIndex + 1];
 }
 
+const instancePort = parseInt(getArgValue("--port") || "6379");
 const replicaOf = getArgValue("--replicaof") || false;
 
 instanceNatureCheck();
@@ -164,14 +165,50 @@ function instanceNatureCheck() {
   }
 }
 
+let masterPong = false;
+let masterReplconf1 = false;
+let masterReplconf2 = false;
 function startHandshakeProcess(masterPort: number, masterAddress: string) {
   const client = net.createConnection(
     { port: masterPort, host: masterAddress },
     () => {
       console.log("started Handshake Process with MASTER");
 
+      console.log("Handshake Process with MASTER 1/3");
       console.log("PING");
-      client.write("*1\r\n$4\r\nping\r\n");
+      if (!masterPong && !masterReplconf1 && !masterReplconf2)
+        client.write("*1\r\n$4\r\nping\r\n");
+
+      client.on("data", (data) => {
+        const response = data.toString().trim();
+
+        if (response === "+PONG") {
+          masterPong = true;
+        }
+        if (response === "+OK") {
+          masterReplconf1 = true;
+        }
+        if (response === "+OK" && masterReplconf1 && masterPong) {
+          masterReplconf2 = true;
+        }
+
+        console.log({ pingResponse: response });
+
+        if (masterPong && !masterReplconf1 && !masterReplconf2) {
+          console.log("Handshake Process with MASTER 2/3");
+          console.log("REPLCONF");
+          client.write(
+            `*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n${instancePort}\r\n`
+          );
+          return;
+        }
+        // if (masterPong && masterReplconf1 && !masterReplconf2) {
+        console.log("Handshake Process with MASTER 3/3");
+        console.log("psync2");
+
+        client.write(`*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n`);
+        //}
+      });
     }
   );
 }
@@ -188,7 +225,7 @@ function mapToString(map: Map<any, any>): string {
   return result;
 }
 
-server.listen(parseInt(getArgValue("--port")) || 6379, "127.0.0.1");
+server.listen(instancePort, "127.0.0.1");
 
 function redisProtocolParser(str: string) {
   try {
