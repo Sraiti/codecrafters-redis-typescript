@@ -168,6 +168,8 @@ function instanceNatureCheck() {
 let masterPong = false;
 let masterReplconf1 = false;
 let masterReplconf2 = false;
+let masterPSYNC = false;
+
 function startHandshakeProcess(masterPort: number, masterAddress: string) {
   const client = net.createConnection(
     { port: masterPort, host: masterAddress },
@@ -176,11 +178,22 @@ function startHandshakeProcess(masterPort: number, masterAddress: string) {
 
       console.log("Handshake Process with MASTER 1/3");
       console.log("PING");
-      if (!masterPong && !masterReplconf1 && !masterReplconf2)
+
+      if (!masterPong && !masterReplconf1 && !masterReplconf2) {
+        console.log("notice me master PING");
+
         client.write("*1\r\n$4\r\nping\r\n");
+      }
 
       client.on("data", (data) => {
         const response = data.toString().trim();
+
+        console.log({
+          masterPong,
+          masterReplconf1,
+          masterReplconf2,
+          masterPSYNC,
+        });
 
         if (response === "+PONG") {
           masterPong = true;
@@ -188,11 +201,19 @@ function startHandshakeProcess(masterPort: number, masterAddress: string) {
         if (response === "+OK") {
           masterReplconf1 = true;
         }
+        if (masterReplconf2) {
+          masterPSYNC = true;
+        }
+
         if (response === "+OK" && masterReplconf1 && masterPong) {
           masterReplconf2 = true;
         }
 
-        console.log({ pingResponse: response });
+        if (response.includes("FULLRESYNC")) {
+          console.log("FULLRESYNC");
+        }
+
+        console.log({ response });
 
         if (masterPong && !masterReplconf1 && !masterReplconf2) {
           console.log("Handshake Process with MASTER 2/3");
@@ -201,13 +222,23 @@ function startHandshakeProcess(masterPort: number, masterAddress: string) {
             `*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n${instancePort}\r\n`
           );
           return;
-        }
-        // if (masterPong && masterReplconf1 && !masterReplconf2) {
-        console.log("Handshake Process with MASTER 3/3");
-        console.log("psync2");
+        } else if (masterReplconf2 && !masterPSYNC) {
+          console.log("Handshake Process with MASTER 3/3");
+          console.log("Replconf2  capa npsync2");
 
-        client.write(`*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n`);
-        //}
+          client.write(
+            `*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n`
+          );
+          return;
+        } else if (masterPSYNC) {
+          console.log("last stage ");
+
+          console.log("PSYNC ? -1");
+          console.log({ masterPSYNC });
+
+          client.write(`*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n`);
+          return;
+        }
       });
     }
   );
