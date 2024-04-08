@@ -231,9 +231,7 @@ function startHandshakeProcess(masterPort: number, masterAddress: string) {
           );
           return;
         } else if (masterPSYNC) {
-          console.log("last stage ");
-
-          console.log("PSYNC ? -1");
+          console.log("last stage :", "PSYNC ? -1");
           console.log({ masterPSYNC });
 
           client.write(`*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n`);
