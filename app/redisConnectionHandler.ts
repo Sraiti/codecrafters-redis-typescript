@@ -1,6 +1,14 @@
 import { mapToString, redisProtocolParser } from "./helpers.ts";
 import * as net from "node:net";
 
+enum Commands {
+  PING = "PING",
+  ECHO = "ECHO",
+  SET = "SET",
+  GET = "GET",
+  INFO = "INFO",
+  REPLCONF = "REPLCONF",
+}
 class RedisConnectionHandler {
   private mapStore = new Map<
     string,
@@ -29,21 +37,27 @@ class RedisConnectionHandler {
 
     const command = parsedRequest[0].toLowerCase();
 
-    switch (command) {
-      case "ping":
+    console.log({ command });
+
+    switch (command.toUpperCase()) {
+      case Commands.PING:
         this.handlePing();
         break;
-      case "echo":
+      case Commands.ECHO:
         this.handleEcho(parsedRequest[1]);
         break;
-      case "set":
+      case Commands.SET:
         this.handleSet(parsedRequest.slice(1));
         break;
-      case "get":
+      case Commands.GET:
         this.handleGet(parsedRequest.slice(1));
         break;
-      case "info":
+      case Commands.INFO:
         this.handleInfo();
+        break;
+      case Commands.REPLCONF:
+        console.log("replicaof command");
+        this.handleReplicaOf();
         break;
       default:
         return;
@@ -60,6 +74,10 @@ class RedisConnectionHandler {
   }
   private handlePing() {
     this.writeResponse("+PONG\r\n");
+  }
+
+  private handleReplicaOf() {
+    this.writeResponse("+OK\r\n");
   }
 
   private handleEcho(param: string) {
