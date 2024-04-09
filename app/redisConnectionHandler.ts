@@ -8,6 +8,7 @@ enum Commands {
   GET = "GET",
   INFO = "INFO",
   REPLCONF = "REPLCONF",
+  PSYNC = "PSYNC",
 }
 class RedisConnectionHandler {
   private mapStore = new Map<
@@ -18,6 +19,8 @@ class RedisConnectionHandler {
     }
   >();
 
+  private master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
+  private master_repl_offset = 0;
   private isReplica = false;
 
   constructor(private connection: net.Socket, isReplica = false) {
@@ -59,6 +62,10 @@ class RedisConnectionHandler {
         console.log("replicaof command");
         this.handleReplicaOf();
         break;
+      case Commands.PSYNC:
+        console.log("PSYNC command");
+        this.handlePSYNC();
+        break;
       default:
         return;
     }
@@ -75,7 +82,11 @@ class RedisConnectionHandler {
   private handlePing() {
     this.writeResponse("+PONG\r\n");
   }
-
+  private handlePSYNC() {
+    this.writeResponse(
+      `+FULLRESYNC ${this.master_replid} ${this.master_repl_offset}\r\n`
+    );
+  }
   private handleReplicaOf() {
     this.writeResponse("+OK\r\n");
   }
@@ -142,8 +153,8 @@ class RedisConnectionHandler {
       infoMap.set("role", "slave");
     } else {
       infoMap.set("role", "master");
-      infoMap.set("master_replid", "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb");
-      infoMap.set("master_repl_offset", "0");
+      infoMap.set("master_replid", this.master_replid);
+      infoMap.set("master_repl_offset", this.master_repl_offset.toString());
     }
 
     const infoResponse = `$${mapToString(infoMap).length}\r\n${mapToString(
