@@ -36,6 +36,9 @@ class RedisReplicationClient {
     switch (response) {
       case MasterResponses.PONG:
         this.replicationStage = ReplicationStage.REPLCONF;
+        console.log(
+          "master PONGED me !!!, now I will tell you where i'm listening"
+        );
         this.writeResponse(
           `*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n${this.slavePort}\r\n`
         );
@@ -45,6 +48,9 @@ class RedisReplicationClient {
 
       case MasterResponses.OK:
         if (this.replicationStage === ReplicationStage.REPLCONF1) {
+          console.log(
+            "master said OK, let me tell you what i can do MY CAPABILITIES"
+          );
           this.writeResponse(
             `*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n`
           );
@@ -52,6 +58,9 @@ class RedisReplicationClient {
           this.replicationStage = ReplicationStage.PSYNC;
           break;
         } else if (this.replicationStage === ReplicationStage.PSYNC) {
+          console.log(
+            "master said OK again, let me Synchronize with you master"
+          );
           this.writeResponse(`*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n`);
           break;
         }
