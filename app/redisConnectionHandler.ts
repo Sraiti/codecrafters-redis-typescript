@@ -8,6 +8,7 @@ enum Commands {
   ECHO = "ECHO",
   SET = "SET",
   GET = "GET",
+  DELETE = "DEL",
   INFO = "INFO",
   REPLCONF = "REPLCONF",
   PSYNC = "PSYNC",
@@ -24,11 +25,18 @@ class RedisConnectionHandler {
   private master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
   private master_repl_offset = 0;
   private isReplica = false;
-  private rdbHex =
-    "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
-  private rdbBase64 =
+  private sentRdbFilesRecords: string[] = [];
+
+  replicas: {
+    connection: net.Socket;
+  }[] = [];
+
+  private rdbEmptyBase64 =
     "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog==";
   private CRLF = "\r\n" as const;
+
+  private operationsToPropagate: string[] = [];
+
   constructor(private connection: net.Socket, isReplica = false) {
     console.log("initialize RedisConnectionHandler");
 
@@ -37,6 +45,16 @@ class RedisConnectionHandler {
   }
 
   private handleData(data: Buffer) {
+    console.log("connected Replicas", this.replicas);
+
+    console.log("instance Type :", { isReplica: this.isReplica });
+
+    console.log("start handling data");
+    console.log({
+      emptyRdbHasBeenSent: this.sentRdbFilesRecords,
+      operationsToPropagate: this.operationsToPropagate,
+    });
+
     const parsedRequest: string[] = redisProtocolParser(data.toString());
 
     console.log({ data });
@@ -68,7 +86,7 @@ class RedisConnectionHandler {
         break;
       case Commands.REPLCONF:
         console.log("replicaof command");
-        this.handleReplicaOf();
+        this.handleReplicaOf(parsedRequest);
         break;
       case Commands.PSYNC:
         console.log("PSYNC command");
@@ -103,8 +121,8 @@ class RedisConnectionHandler {
 
     console.log("start getting RDB FILE ");
 
-    const emptyRDBHex = this.rdbBase64;
-    const rdbBuffer = Buffer.from(emptyRDBHex, "base64");
+    const emptyRDB64 = this.rdbEmptyBase64;
+    const rdbBuffer = Buffer.from(emptyRDB64, "base64");
     const lengthOfRDB = rdbBuffer.length;
     const rdbResponse = Buffer.from(`$${lengthOfRDB}\r\n`, "utf-8");
 
@@ -116,14 +134,33 @@ class RedisConnectionHandler {
     /// and PS i couldn't made it to work using deno so i imported the good old node
     //skill issue on my end for sure
     this.writeResponse(Buffer.concat([rdbResponse, rdbBuffer]));
+
+    this.sentRdbFilesRecords.push(this.master_replid);
+
+    this.replicas.push({
+      connection: this.connection,
+    });
+    
+    console.log({ replicas: this.replicas });
+
+    console.log(
+      "RDB FILE has been sent and state has been updated",
+      this.sentRdbFilesRecords
+    );
+
+    return;
   }
-  private handleReplicaOf() {
+
+  private handleReplicaOf(parsedRequest: string[]) {
+    console.log("handleReplicaOf");
+
     this.writeResponse(`+OK${this.CRLF}`);
   }
 
   private handleEcho(param: string) {
     this.writeResponse(`$${param.length}${this.CRLF}${param}${this.CRLF}`);
   }
+
   private handleSet(parsedRequest: string[]) {
     console.info("start set command :");
 
@@ -144,6 +181,43 @@ class RedisConnectionHandler {
         ttl: Infinity,
       });
       this.writeResponse(`+OK${this.CRLF}`);
+    }
+
+    if (!this.isReplica) {
+      this.gatherToPropagate(Commands.SET, key, value);
+    }
+  }
+
+  private propagateToReplicas() {
+    console.log("propagate to replicas");
+
+    this.operationsToPropagate.forEach((operation) => {
+      console.log("operation", operation);
+      this.writeResponse(operation);
+    });
+
+    this.operationsToPropagate = [];
+  }
+
+  private gatherToPropagate(command: Commands, key: string, value: string) {
+    console.log("gather to propagate");
+
+    if (command === Commands.SET) {
+      this.operationsToPropagate.push(
+        `*3\r\n$3\r\n${command}\r\n$3\r\n${key}\r\n$3\r\n${value}\r\n`
+      );
+    } else if (command === Commands.DELETE) {
+      this.operationsToPropagate.push(
+        `*3\r\n$3\r\n${command}\r\n$3\r\nfoo\r\n`
+      );
+    }
+
+    console.log("check if we sent the empty rdb", {
+      emptyRdbHasBeenSent: this.sentRdbFilesRecords.length,
+    });
+
+    if (this.sentRdbFilesRecords.length) {
+      this.propagateToReplicas();
     }
   }
 
