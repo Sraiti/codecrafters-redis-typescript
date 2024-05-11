@@ -5,7 +5,7 @@ import { RedisReplicationClient } from "./redisReplicationHandler.ts";
 // You can use print statements as follows for debugging, they'll be visible when running tests.
 console.log("Logs from your program will appear here!");
 
-const args: string[] = Deno.args || [];
+const args: string[] = Bun.argv || [];
 
 function getArgValue(argName: string): string | false {
   const argIndex = args.findIndex((arg) => arg === argName);
@@ -19,13 +19,15 @@ const instancePort = parseInt(getArgValue("--port") || "6379");
 
 const replicaOf = getArgValue("--replicaof") || false;
 
+//master at 6379
+
 console.log({ args, replicaOf });
 
 instanceNatureCheck();
 
 // Uncomment this block to pass the first stage
 const server: net.Server = net.createServer((connection: net.Socket) => {
-  new RedisConnectionHandler(connection, replicaOf ? true : false);
+  new RedisConnectionHandler(connection);
   connection.on("end", () => {
     console.log("client disconnected");
   });

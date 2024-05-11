@@ -1,5 +1,11 @@
 {
+  "name": "codecrafters-redis-typescript",
+  "module": "main.ts",
+  "type": "module",
   "devDependencies": {
-    "@types/node": "^20.12.3"
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
   }
 }

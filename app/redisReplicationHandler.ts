@@ -17,7 +17,10 @@ class RedisReplicationClient {
   private slavePort;
 
   constructor(private connection: net.Socket, slavePort: number) {
-    console.log("initialize RedisConnectionHandler");
+    console.log(
+      "replica :" + slavePort,
+      "initialize Redis Replica Connection Handler"
+    );
     this.connection.on("data", this.handleData.bind(this));
     this.slavePort = slavePort;
 
