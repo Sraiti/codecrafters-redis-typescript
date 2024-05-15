@@ -73,35 +73,10 @@ class RedisReplicationClient {
         }
         break;
 
-      case "INFO":
-        this.handleInfo();
-        break;
       default:
-        //   // if (response.startsWith(MasterResponses.FULLRESYNC)) {
-        //   //   this.replicationStage = ReplicationStage.FULLRESYNC;
-        //   this.writeResponse("");
-        //   console.log("return okie");
-        //   break;
-        // }
-
         console.log("didn't know master can do this : ", { response });
         break;
     }
-  }
-  private handleInfo() {
-    console.log("started Info Stage");
-
-    const infoMap = new Map<string, string>();
-
-    infoMap.set("role", "slave");
-    // infoMap.set("master_replid", this.master_replid);
-    // infoMap.set("master_repl_offset", this.master_repl_offset.toString());
-
-    const infoResponse = `$${mapToString(infoMap).length}${
-      this.CRLF
-    }${mapToString(infoMap)}${this.CRLF}`;
-
-    this.writeResponse(infoResponse);
   }
 
   private writeResponse(response: string) {
