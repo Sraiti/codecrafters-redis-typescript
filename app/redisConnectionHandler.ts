@@ -1,7 +1,8 @@
-import { mapToString, redisProtocolParser } from "./helpers.ts";
+import { Roles, mapToString, redisProtocolParser } from "./helpers.ts";
 import * as net from "node:net";
 
 import { Buffer } from "node:buffer";
+import { replicas } from "./replicasManager.ts";
 
 enum Commands {
   PING = "PING",
@@ -25,17 +26,19 @@ class RedisConnectionHandler {
   private master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
   private master_repl_offset = 0;
   private sentRdbFilesRecords: string[] = [];
-
-  replicas: net.Socket[] = [];
-
+  // private replicas: net.Socket[];
   private rdbEmptyBase64 =
     "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog==";
   private CRLF = "\r\n" as const;
 
-  private operationsToPropagate: string[] = [];
+  // private operationsToPropagate: string[] = [];
 
   private instancePort?: number;
-  constructor(private connection: net.Socket) {
+  // private static instance: RedisConnectionHandler;
+
+  private role: Roles;
+  constructor(private connection: net.Socket, role: Roles) {
+    this.role = role;
     console.log("Master", "initialize RedisConnectionHandler", {
       localport: connection.localPort,
       remotePort: connection.remotePort,
@@ -46,13 +49,24 @@ class RedisConnectionHandler {
     this.connection.on("end", this.handleDisconnection.bind(this));
   }
 
+  // public static getInstance(connection: net.Socket): RedisConnectionHandler {
+  //   if (!RedisConnectionHandler.instance) {
+  //     console.log("initiating");
+  //     RedisConnectionHandler.instance = new RedisConnectionHandler(connection);
+  //   }
+
+  //   console.log("return already initiated instance");
+
+  //   return RedisConnectionHandler.instance;
+  // }
+
   handleDisconnection(data: boolean) {
     console.log("client disconnected");
   }
 
   private handleData(data: Buffer) {
     console.log(`${this.instancePort} : connected Replicas`, {
-      connectedReplicas: this.replicas.map((r) => r.remotePort),
+      connectedReplicas: replicas.length,
     });
 
     const parsedRequest = redisProtocolParser(data.toString());
@@ -95,7 +109,6 @@ class RedisConnectionHandler {
         break;
       default:
         console.log(command + " is not handled");
-
         return;
     }
   }
@@ -109,7 +122,7 @@ class RedisConnectionHandler {
     });
   }
   private handlePing() {
-    this.writeResponse(`+PONG${this.CRLF}`);
+    return this.writeResponse(`+PONG${this.CRLF}`);
   }
   private handlePSYNC() {
     console.log("handling PSYNC");
@@ -141,10 +154,19 @@ class RedisConnectionHandler {
       const replicaPort = parsedRequest.pop();
 
       if (replicaPort) {
-        this.replicas.push(this.connection);
-        console.log({
-          connectedReplicas: this.replicas.map((r) => r.remotePort),
-        });
+        replicas.push(
+          this.connection
+          //   remotePort: Number(replicaPort),
+        );
+        // console.log({
+        //   connectedReplicas: this.replicas.map((r) => {
+        //     return {
+        //       remotePort: r.remotePort,
+        //       localPort: r.localPort,
+        //       replicaListeningPort: replicaPort,
+        //     };
+        //   }),
+        // });
       }
     }
 
@@ -177,7 +199,7 @@ class RedisConnectionHandler {
   }
 
   private propagateToReplicas(request: Buffer) {
-    for (const replica of this.replicas) {
+    for (const replica of replicas) {
       replica.write(request);
     }
   }
@@ -211,13 +233,18 @@ class RedisConnectionHandler {
 
     const infoMap = new Map<string, string>();
 
-    infoMap.set("role", "master");
-    infoMap.set("master_replid", this.master_replid);
-    infoMap.set("master_repl_offset", this.master_repl_offset.toString());
-
+    if (this.role === Roles.MASTER) {
+      infoMap.set("role", Roles.MASTER.toLowerCase());
+      infoMap.set("master_replid", this.master_replid);
+      infoMap.set("master_repl_offset", this.master_repl_offset.toString());
+    } else if (this.role === Roles.SLAVE) {
+      infoMap.set("role", Roles.SLAVE.toLowerCase());
+    }
     const infoResponse = `$${mapToString(infoMap).length}${
       this.CRLF
     }${mapToString(infoMap)}${this.CRLF}`;
+
+    console.log({ infoResponse });
 
     this.writeResponse(infoResponse);
   }

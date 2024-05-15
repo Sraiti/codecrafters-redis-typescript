@@ -1,4 +1,5 @@
 import * as net from "node:net";
+import { mapToString, redisProtocolParser } from "./helpers";
 
 enum ReplicationStage {
   PING = "PING",
@@ -15,7 +16,7 @@ enum MasterResponses {
 class RedisReplicationClient {
   private replicationStage: ReplicationStage = ReplicationStage.PING;
   private slavePort;
-
+  private CRLF = "\r\n" as const;
   constructor(private connection: net.Socket, slavePort: number) {
     console.log(
       "replica :" + slavePort,
@@ -23,7 +24,6 @@ class RedisReplicationClient {
     );
     this.connection.on("data", this.handleData.bind(this));
     this.slavePort = slavePort;
-
     console.log("notice me master PING");
     this.writeResponse("*1\r\n$4\r\nping\r\n");
   }
@@ -35,6 +35,10 @@ class RedisReplicationClient {
       this.writeResponse("-ERR invalid request\r\n");
       return;
     }
+
+    const parsedCommand = redisProtocolParser(data.toString());
+
+    console.log({ response, parsedCommand });
 
     switch (response) {
       case MasterResponses.PONG:
@@ -69,10 +73,35 @@ class RedisReplicationClient {
         }
         break;
 
+      case "INFO":
+        this.handleInfo();
+        break;
       default:
+        //   // if (response.startsWith(MasterResponses.FULLRESYNC)) {
+        //   //   this.replicationStage = ReplicationStage.FULLRESYNC;
+        //   this.writeResponse("");
+        //   console.log("return okie");
+        //   break;
+        // }
+
         console.log("didn't know master can do this : ", { response });
-        return;
+        break;
     }
+  }
+  private handleInfo() {
+    console.log("started Info Stage");
+
+    const infoMap = new Map<string, string>();
+
+    infoMap.set("role", "slave");
+    // infoMap.set("master_replid", this.master_replid);
+    // infoMap.set("master_repl_offset", this.master_repl_offset.toString());
+
+    const infoResponse = `$${mapToString(infoMap).length}${
+      this.CRLF
+    }${mapToString(infoMap)}${this.CRLF}`;
+
+    this.writeResponse(infoResponse);
   }
 
   private writeResponse(response: string) {

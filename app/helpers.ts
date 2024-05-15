@@ -79,4 +79,9 @@ function mapToString(map: Map<any, any>): string {
   return result;
 }
 
-export { redisProtocolParser, mapToString };
+enum Roles {
+  SLAVE = "SLAVE",
+  MASTER = "MASTER",
+}
+
+export { redisProtocolParser, mapToString, Roles };
