@@ -14,6 +14,7 @@ enum MasterResponses {
   OK = "OK",
   SET = "SET",
   GET = "GET",
+  REPLCONF = "REPLCONF",
 }
 
 class RedisReplicationClient {
@@ -41,13 +42,17 @@ class RedisReplicationClient {
       return;
     }
 
-    const splitCommands = response.includes("SET")
-      ? response
-          .split("*3")
-          .filter((a) => a)
-          .map((a) => a.includes("SET") && "*3".concat(a))
-          .filter((a) => a)
-      : [response];
+    const splitCommands =
+      response.includes("SET") || response.includes("GETACK")
+        ? response
+            .split("*3")
+            .filter((a) => a)
+            .map(
+              (a) =>
+                (a.includes("SET") || a.includes("GETACK")) && "*3".concat(a)
+            )
+            .filter((a) => a)
+        : [response];
 
     console.log({
       response,
@@ -124,6 +129,10 @@ class RedisReplicationClient {
             console.log("not a valid command");
           }
           break;
+        case MasterResponses.REPLCONF:
+          this.writeResponse(
+            "*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n"
+          );
         default:
           console.log("didn't know master can do this : ", { request });
           break;
