@@ -2,7 +2,8 @@ import { Roles, mapToString, redisProtocolParser } from "./helpers.ts";
 import * as net from "node:net";
 
 import { Buffer } from "node:buffer";
-import { replicas } from "./replicasManager.ts";
+import { mapStore, replicas } from "./replicasManager.ts";
+import { RedisReplicationClient } from "./redisReplicationHandler.ts";
 
 enum Commands {
   PING = "PING",
@@ -15,13 +16,13 @@ enum Commands {
   PSYNC = "PSYNC",
 }
 class RedisConnectionHandler {
-  private mapStore = new Map<
-    string,
-    {
-      value: string;
-      ttl: number;
-    }
-  >();
+  // private mapStore = new Map<
+  //   string,
+  //   {
+  //     value: string;
+  //     ttl: number;
+  //   }
+  // >();
 
   private master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb";
   private master_repl_offset = 0;
@@ -35,30 +36,38 @@ class RedisConnectionHandler {
 
   private instancePort?: number;
   // private static instance: RedisConnectionHandler;
-
+  private replicationClient: RedisReplicationClient | null = null;
   private role: Roles;
   constructor(private connection: net.Socket, role: Roles) {
     this.role = role;
-    console.log("Master", "initialize RedisConnectionHandler", {
-      localport: connection.localPort,
-      remotePort: connection.remotePort,
-    });
+
+    if (role === Roles.MASTER) {
+      console.log(
+        "RedisConnectionHandler",
+        "Master",
+        "initialize RedisConnectionHandler",
+        {
+          localport: connection.localPort,
+          remotePort: connection.remotePort,
+        }
+      );
+    } else {
+      console.log(
+        "RedisConnectionHandler",
+        "Slave",
+        "initialize RedisConnectionHandler",
+        {
+          localport: connection.localPort,
+          remotePort: connection.remotePort,
+        }
+      );
+    }
+
     this.instancePort = connection.localPort;
 
     this.connection.on("data", this.handleData.bind(this));
     this.connection.on("end", this.handleDisconnection.bind(this));
   }
-
-  // public static getInstance(connection: net.Socket): RedisConnectionHandler {
-  //   if (!RedisConnectionHandler.instance) {
-  //     console.log("initiating");
-  //     RedisConnectionHandler.instance = new RedisConnectionHandler(connection);
-  //   }
-
-  //   console.log("return already initiated instance");
-
-  //   return RedisConnectionHandler.instance;
-  // }
 
   handleDisconnection(data: boolean) {
     console.log("client disconnected");
@@ -107,6 +116,8 @@ class RedisConnectionHandler {
       case Commands.PSYNC:
         this.handlePSYNC();
         break;
+      //salve stuff
+
       default:
         console.log(command + " is not handled");
         return;
@@ -123,6 +134,17 @@ class RedisConnectionHandler {
   }
   private handlePing() {
     return this.writeResponse(`+PONG${this.CRLF}`);
+  }
+
+  startReplication(masterConnection: net.Socket) {
+    if (!this.instancePort) {
+      throw Error("instance Port not found");
+    }
+    this.replicationClient = new RedisReplicationClient(
+      masterConnection,
+      this.instancePort
+    );
+    this.replicationClient.initiateHandshake();
   }
   private handlePSYNC() {
     console.log("handling PSYNC");
@@ -183,19 +205,21 @@ class RedisConnectionHandler {
     const [key, value, option, optionValue] = parsedRequest;
 
     if (option && option === "px") {
-      this.mapStore.set(key, {
+      mapStore.set(key, {
         value: value,
         ttl: Date.now() + Number(optionValue),
       });
-
-      this.writeResponse(`+OK${this.CRLF}`);
     } else {
-      this.mapStore.set(key, {
+      mapStore.set(key, {
         value: value,
         ttl: Infinity,
       });
-      this.writeResponse(`+OK${this.CRLF}`);
     }
+
+    console.log({ key, value, store: mapStore });
+    console.log({ role: this.role });
+
+    if (this.role === Roles.MASTER) this.writeResponse(`+OK${this.CRLF}`);
   }
 
   private propagateToReplicas(request: Buffer) {
@@ -209,7 +233,7 @@ class RedisConnectionHandler {
 
     const [key] = parsedRequest;
 
-    const item = this.mapStore.get(key);
+    const item = mapStore.get(key);
 
     if (item) {
       if (item.ttl === Infinity) {

@@ -1,7 +1,8 @@
 import * as net from "node:net";
 import RedisConnectionHandler from "./redisConnectionHandler.ts";
-import { RedisReplicationClient } from "./redisReplicationHandler.ts";
+// import { RedisReplicationClient } from "./redisReplicationHandler.ts";
 import { Roles } from "./helpers.ts";
+import { RedisReplicationClient } from "./redisReplicationHandler.ts";
 
 // const servers: RedisConnectionHandler[] = [];
 // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -22,7 +23,7 @@ function getArgValue(argName: string): string | false {
 const instancePort = parseInt(getArgValue("--port") || "6379");
 
 const isReplica = getArgValue("--replicaof") || false;
-let replicaOf = {
+let masterInfo = {
   port: 0,
   host: "0",
 };
@@ -33,62 +34,31 @@ if (
 ) {
   const replicaAddress = (getArgValue("--replicaof") as string).split(" ");
 
-  replicaOf.host = replicaAddress[0];
-  replicaOf.port = Number(replicaAddress[1]);
+  masterInfo.host = replicaAddress[0];
+  masterInfo.port = Number(replicaAddress[1]);
+} else {
+  masterInfo.host = "127.0.0.1";
+  masterInfo.port = instancePort;
 }
-console.log({ instancePort, replicaOf });
+console.log({ instancePort, masterInfo, isReplica });
 
-console.log({ isReplica, instancePort, args });
-
-const server: net.Server = net.createServer((connection: net.Socket) => {
-  console.log("Connection established");
-  new RedisConnectionHandler(
-    connection,
-    isReplica ? Roles.SLAVE : Roles.MASTER
-  );
-  connection.on("end", () => {
-    console.log("Connection ended");
-  });
-  connection.on("close", () => {
-    console.log("Connection closed");
-  });
-});
+const server = net.createServer(
+  (conn) =>
+    new RedisConnectionHandler(conn, isReplica ? Roles.SLAVE : Roles.MASTER)
+);
 
 server.listen(instancePort, "127.0.0.1", () => {
   console.log("Server created and listening on port:", instancePort);
 });
 
-instanceNatureCheck();
-
-function instanceNatureCheck() {
-  console.log("instanceNatureCheck called");
-
-  if (isReplica) {
-    console.log("SLAVE");
-    console.log("replicaOf start handshake process with MASTER");
-
-    if (!replicaOf.host || !replicaOf.port) {
-      console.log("Invalid replicaOf arguments");
-      return;
-    }
-
-    startHandshakeProcess(replicaOf.port, replicaOf.host);
-  } else {
-    console.log("Master");
-  }
-}
-
-function startHandshakeProcess(masterPort: number, masterAddress: string) {
-  const client = net.createConnection(
-    { port: masterPort, host: masterAddress },
-    () => {
-      new RedisReplicationClient(client, instancePort);
-      client.on("end", () => {
-        console.log("Connection ended");
-      });
-      client.on("close", () => {
-        console.log("Connection closed");
-      });
-    }
+if (isReplica) {
+  const masterConnection = net.createConnection({
+    port: masterInfo.port,
+    host: masterInfo.host,
+  });
+  const replicaHandler = new RedisReplicationClient(
+    masterConnection,
+    instancePort
   );
+  replicaHandler.initiateHandshake();
 }
